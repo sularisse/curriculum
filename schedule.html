@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中國醫藥大學 課表產生器</title>
+    <meta name="description" content="中國醫藥大學課程查詢與視覺化課表產生工具">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* ===== CSS Reset & Variables ===== */
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-card: rgba(17, 24, 39, 0.7);
+            --bg-glass: rgba(255, 255, 255, 0.04);
+            --bg-glass-hover: rgba(255, 255, 255, 0.08);
+            --border-glass: rgba(255, 255, 255, 0.08);
+            --border-glass-hover: rgba(255, 255, 255, 0.15);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --accent-purple: #8b5cf6;
+            --accent-emerald: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-rose: #f43f5e;
+            --accent-indigo: #6366f1;
+            --accent-teal: #14b8a6;
+            --gradient-primary: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            --gradient-header: linear-gradient(135deg, #1e3a5f, #1a1a3e);
+            --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.5);
+            --shadow-glow: 0 0 40px rgba(59, 130, 246, 0.15);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 20px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        body {
+            font-family: 'Noto Sans TC', 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* ===== Animated Background ===== */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                radial-gradient(ellipse 600px 600px at 20% 20%, rgba(59, 130, 246, 0.08), transparent),
+                radial-gradient(ellipse 500px 500px at 80% 80%, rgba(139, 92, 246, 0.06), transparent),
+                radial-gradient(ellipse 400px 400px at 50% 50%, rgba(6, 182, 212, 0.04), transparent);
+            pointer-events: none;
+            z-index: 0;
+            animation: bgPulse 15s ease-in-out infinite alternate;
+        }
+
+        @keyframes bgPulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        /* ===== Header ===== */
+        .header {
+            position: relative;
+            z-index: 10;
+            padding: 28px 40px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-glass);
+            backdrop-filter: blur(20px);
+            background: rgba(10, 14, 26, 0.6);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .header-logo {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-md);
+            background: var(--gradient-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            font-weight: 900;
+            color: white;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        }
+
+        .header-title {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header-title h1 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #f1f5f9, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-title span {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-family: 'Inter', sans-serif;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .header-badge {
+            padding: 6px 14px;
+            border-radius: 20px;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            color: var(--accent-blue);
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        /* ===== Main Container ===== */
+        .main-container {
+            position: relative;
+            z-index: 5;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px 30px 60px;
+        }
+
+        /* ===== Filter Section ===== */
+        .filter-section {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-xl);
+            padding: 28px 32px 24px;
+            margin-bottom: 28px;
+            backdrop-filter: blur(16px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .filter-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--gradient-primary);
+            border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+        }
+
+        .filter-section-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .filter-section-title .icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: rgba(59, 130, 246, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .filter-group label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-group select {
+            appearance: none;
+            -webkit-appearance: none;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-sm);
+            padding: 10px 36px 10px 14px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: 'Noto Sans TC', sans-serif;
+            cursor: pointer;
+            transition: var(--transition);
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            width: 100%;
+        }
+
+        .filter-group select:hover {
+            border-color: var(--accent-blue);
+            background-color: rgba(17, 24, 39, 0.9);
+        }
+
+        .filter-group select:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+        }
+
+        .filter-group select option {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            padding: 8px;
+        }
+
+        /* ===== Buttons ===== */
+        .btn-row {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+            justify-content: flex-end;
+        }
+
+        .btn {
+            padding: 10px 28px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 600;
+            font-family: 'Noto Sans TC', sans-serif;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-primary {
+            background: var(--gradient-primary);
+            color: white;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: var(--bg-glass);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-glass);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-glass-hover);
+            color: var(--text-primary);
+            border-color: var(--border-glass-hover);
+        }
+
+        .btn.loading {
+            pointer-events: none;
+            opacity: 0.8;
+        }
+
+        .btn.loading::after {
+            content: '';
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ===== Status Bar ===== */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 20px;
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-md);
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+
+        .status-bar .status-text {
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-bar .status-text .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-emerald);
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+        }
+
+        .status-bar .status-text .dot.loading {
+            background: var(--accent-amber);
+            box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .status-bar .status-text .dot.error {
+            background: var(--accent-rose);
+            box-shadow: 0 0 8px rgba(244, 63, 94, 0.5);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .status-bar .course-count {
+            color: var(--accent-blue);
+            font-weight: 600;
+        }
+
+        /* ===== Timetable ===== */
+        .timetable-wrapper {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-xl);
+            padding: 24px;
+            backdrop-filter: blur(16px);
+            overflow-x: auto;
+        }
+
+        .timetable {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 3px;
+            min-width: 800px;
+        }
+
+        .timetable th {
+            padding: 14px 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-align: center;
+            border-radius: var(--radius-sm);
+        }
+
+        .timetable th.day-header {
+            background: var(--gradient-header);
+            border: 1px solid rgba(59, 130, 246, 0.15);
+            min-width: 120px;
+        }
+
+        .timetable th.time-header {
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.15);
+            width: 110px;
+            font-size: 12px;
+        }
+
+        .timetable td {
+            padding: 0;
+            text-align: center;
+            vertical-align: top;
+            border-radius: var(--radius-sm);
+            background: rgba(255, 255, 255, 0.015);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            transition: var(--transition);
+            height: 60px;
+            position: relative;
+        }
+
+        .timetable td:hover {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        .timetable td.time-col {
+            background: rgba(139, 92, 246, 0.05);
+            border: 1px solid rgba(139, 92, 246, 0.08);
+            vertical-align: middle;
+            font-size: 11px;
+            color: var(--text-muted);
+            padding: 4px 6px;
+            line-height: 1.4;
+        }
+
+        .timetable td.time-col .period-num {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            display: block;
+        }
+
+        .timetable td.time-col .period-time {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* ===== Course Cell ===== */
+        .course-cell {
+            padding: 6px 8px;
+            border-radius: 6px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 2px;
+            cursor: pointer;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .course-cell::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 3px;
+            height: 100%;
+            border-radius: 3px 0 0 3px;
+        }
+
+        .course-cell:hover {
+            transform: scale(1.03);
+            z-index: 10;
+        }
+
+        .course-cell .course-name {
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1.3;
+            text-align: center;
+            word-break: break-all;
+        }
+
+        .course-cell .course-teacher {
+            font-size: 10px;
+            opacity: 0.8;
+        }
+
+        .course-cell .course-room {
+            font-size: 9px;
+            opacity: 0.6;
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Course Color Themes */
+        .course-color-0 { background: rgba(59, 130, 246, 0.15); color: #93bbfd; }
+        .course-color-0::before { background: #3b82f6; }
+        .course-color-1 { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; }
+        .course-color-1::before { background: #8b5cf6; }
+        .course-color-2 { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
+        .course-color-2::before { background: #10b981; }
+        .course-color-3 { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
+        .course-color-3::before { background: #f59e0b; }
+        .course-color-4 { background: rgba(244, 63, 94, 0.15); color: #fda4af; }
+        .course-color-4::before { background: #f43f5e; }
+        .course-color-5 { background: rgba(6, 182, 212, 0.15); color: #67e8f9; }
+        .course-color-5::before { background: #06b6d4; }
+        .course-color-6 { background: rgba(99, 102, 241, 0.15); color: #a5b4fc; }
+        .course-color-6::before { background: #6366f1; }
+        .course-color-7 { background: rgba(20, 184, 166, 0.15); color: #5eead4; }
+        .course-color-7::before { background: #14b8a6; }
+        .course-color-8 { background: rgba(236, 72, 153, 0.15); color: #f9a8d4; }
+        .course-color-8::before { background: #ec4899; }
+        .course-color-9 { background: rgba(168, 85, 247, 0.15); color: #d8b4fe; }
+        .course-color-9::before { background: #a855f7; }
+
+        /* ===== Course List Table ===== */
+        .course-list-section {
+            margin-top: 28px;
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-xl);
+            padding: 24px;
+            backdrop-filter: blur(16px);
+        }
+
+        .course-list-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .course-list-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 13px;
+        }
+
+        .course-list-table thead th {
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-glass);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 0;
+            background: var(--bg-secondary);
+        }
+
+        .course-list-table tbody tr {
+            transition: var(--transition);
+        }
+
+        .course-list-table tbody tr:hover {
+            background: var(--bg-glass-hover);
+        }
+
+        .course-list-table tbody td {
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            color: var(--text-primary);
+        }
+
+        .course-list-table .color-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        /* ===== Empty State ===== */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state .empty-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.4;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+            text-align: center;
+            line-height: 1.6;
+        }
+
+        /* ===== Tooltip ===== */
+        .tooltip {
+            position: fixed;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-glass-hover);
+            border-radius: var(--radius-md);
+            padding: 14px 18px;
+            font-size: 13px;
+            box-shadow: var(--shadow-lg);
+            z-index: 9999;
+            max-width: 320px;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(5px);
+            transition: opacity 0.2s, transform 0.2s;
+        }
+
+        .tooltip.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .tooltip .tt-title {
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .tooltip .tt-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 4px;
+            color: var(--text-secondary);
+        }
+
+        .tooltip .tt-label {
+            color: var(--text-muted);
+            min-width: 50px;
+        }
+
+        /* ===== Responsive ===== */
+        @media (max-width: 768px) {
+            .header {
+                padding: 16px 20px;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .main-container {
+                padding: 16px;
+            }
+
+            .filter-section {
+                padding: 20px;
+            }
+
+            .filter-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .timetable-wrapper {
+                padding: 12px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .filter-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ===== Scrollbar ===== */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* ===== Fade In Animation ===== */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-in {
+            animation: fadeInUp 0.5s ease-out forwards;
+        }
+
+        .animate-delay-1 { animation-delay: 0.1s; opacity: 0; }
+        .animate-delay-2 { animation-delay: 0.2s; opacity: 0; }
+        .animate-delay-3 { animation-delay: 0.3s; opacity: 0; }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <div class="header-logo">醫</div>
+            <div class="header-title">
+                <h1>中國醫藥大學 課表產生器</h1>
+                <span>CMU Course Schedule Builder</span>
+            </div>
+        </div>
+        <div class="header-badge">🔗 資料來源：web1.cmu.edu.tw/courseinfo</div>
+    </header>
+
+    <div class="main-container">
+        <!-- Filter Section -->
+        <section class="filter-section animate-in animate-delay-1" id="filter-section">
+            <div class="filter-section-title">
+                <span class="icon">🔍</span>
+                課程篩選條件
+            </div>
+            <div class="filter-grid">
+                <div class="filter-group">
+                    <label for="select-year">學年度</label>
+                    <select id="select-year">
+                        <option value="synPA3HPXq4=" selected>115 學年度</option>
+                        <option value="uKDRoI2NGUo=">114 學年度</option>
+                        <option value="yjZk2WN0+3s=">113 學年度</option>
+                        <option value="vdJ9riNLAiI=">112 學年度</option>
+                        <option value="LsVGPalJhJI=">111 學年度</option>
+                        <option value="l0k7FwGtb98=">110 學年度</option>
+                        <option value="NWOkXI0oS3g=">109 學年度</option>
+                        <option value="xjKFWot59V4=">108 學年度</option>
+                        <option value="PzelpmFRDXk=">107 學年度</option>
+                        <option value="3yodI5tOpXE=">106 學年度</option>
+                        <option value="SRTx1gxV4eA=">105 學年度</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="select-term">學期</label>
+                    <select id="select-term">
+                        <option value="BcDTBOd4PPY=" selected>上學期(1)</option>
+                        <option value="RqotLHGfmO8=">下學期(2)</option>
+                        <option value="qFRsD3b8RaA=">全學年(1,2)</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="select-type">學制</label>
+                    <select id="select-type">
+                        <option value="">全部</option>
+                        <option value="uo9uzKyL6GI=" selected>大學部</option>
+                        <option value="BcDTBOd4PPY=">碩士班</option>
+                        <option value="RqotLHGfmO8=">博士班</option>
+                        <option value="WPoDe9b0evw=">二技部</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="select-dept">開課系所</label>
+                    <select id="select-dept">
+                        <option value="">載入中...</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="select-grade">開課年級</label>
+                    <select id="select-grade">
+                        <option value="">全部</option>
+                        <option value="BcDTBOd4PPY=">1年級</option>
+                        <option value="RqotLHGfmO8=">2年級</option>
+                        <option value="WPoDe9b0evw=">3年級</option>
+                        <option value="A2ebmusFZL8=">4年級</option>
+                        <option value="99/agOEp0pU=">5年級</option>
+                        <option value="HnBev1TbFwE=">6年級</option>
+                        <option value="vvDezzMMs0E=">7年級</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="select-coursetype">課程類別 (修別)</label>
+                    <select id="select-coursetype">
+                        <option value="">全部</option>
+                        <option value="adm8IjQdpn4=">必修</option>
+                        <option value="/n1jVNBMRRw=">選修</option>
+                        <option value="85siN22judc=">通識</option>
+                        <option value="DBe4rLQT33s=">暑修</option>
+                    </select>
+                </div>
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-secondary" id="btn-reset" onclick="resetFilters()">↺ 重置</button>
+                <button class="btn btn-primary" id="btn-search" onclick="searchCourses()">🔍 查詢課程</button>
+            </div>
+        </section>
+
+        <!-- Status Bar -->
+        <div class="status-bar animate-in animate-delay-2" id="status-bar">
+            <div class="status-text">
+                <span class="dot" id="status-dot"></span>
+                <span id="status-msg">就緒 — 請選擇篩選條件後按下查詢</span>
+            </div>
+            <span class="course-count" id="course-count"></span>
+        </div>
+
+        <!-- Timetable -->
+        <div class="timetable-wrapper animate-in animate-delay-3" id="timetable-wrapper">
+            <table class="timetable" id="timetable">
+                <thead>
+                    <tr>
+                        <th class="time-header">節次 / 時間</th>
+                        <th class="day-header">星期一</th>
+                        <th class="day-header">星期二</th>
+                        <th class="day-header">星期三</th>
+                        <th class="day-header">星期四</th>
+                        <th class="day-header">星期五</th>
+                        <th class="day-header">星期六</th>
+                    </tr>
+                </thead>
+                <tbody id="timetable-body">
+                    <!-- Generated by JS -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Course List -->
+        <div class="course-list-section animate-in animate-delay-3" id="course-list-section" style="display:none;">
+            <div class="course-list-title">
+                <span class="icon">📋</span>
+                課程清單
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="course-list-table">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>課號</th>
+                            <th>課程名稱</th>
+                            <th>學分</th>
+                            <th>修別</th>
+                            <th>老師</th>
+                            <th>時間</th>
+                            <th>教室</th>
+                        </tr>
+                    </thead>
+                    <tbody id="course-list-body">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tooltip -->
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        // ===== Constants =====
+        const CORS_PROXIES = [
+            'https://corsproxy.io/?url=',
+            'https://api.allorigins.win/raw?url='
+        ];
+        let currentProxy = 0;
+        const BASE_URL = 'https://web1.cmu.edu.tw/courseinfo';
+
+        // Period times (英才/水湳校區)
+        const PERIODS = [
+            { num: '1', time: '08:10~09:00' },
+            { num: '2', time: '09:10~10:00' },
+            { num: '3', time: '10:10~11:00' },
+            { num: '4', time: '11:10~12:00' },
+            { num: '午', time: '12:10~13:00' },
+            { num: '5', time: '13:10~14:00' },
+            { num: '6', time: '14:10~15:00' },
+            { num: '7', time: '15:10~16:00' },
+            { num: '8', time: '16:10~17:00' },
+            { num: '9', time: '17:05~17:55' },
+            { num: '10', time: '18:00~18:50' },
+            { num: '11', time: '18:55~19:45' },
+            { num: '12', time: '19:50~20:40' },
+            { num: '13', time: '20:45~21:35' },
+        ];
+
+        const DAYS = ['一', '二', '三', '四', '五', '六'];
+        const DAY_MAP = { '一': 0, '二': 1, '三': 2, '四': 3, '五': 4, '六': 5, '日': 6 };
+
+        const COLORS = [
+            'course-color-0', 'course-color-1', 'course-color-2',
+            'course-color-3', 'course-color-4', 'course-color-5',
+            'course-color-6', 'course-color-7', 'course-color-8',
+            'course-color-9'
+        ];
+
+        let courseData = [];
+        let courseColorMap = {};
+
+        // ===== Initialize =====
+        document.addEventListener('DOMContentLoaded', () => {
+            buildTimetable();
+            loadDepartments();
+
+            // When year/term/type changes, reload departments
+            document.getElementById('select-year').addEventListener('change', loadDepartments);
+            document.getElementById('select-term').addEventListener('change', loadDepartments);
+            document.getElementById('select-type').addEventListener('change', loadDepartments);
+        });
+
+        // ===== Build Empty Timetable =====
+        function buildTimetable() {
+            const tbody = document.getElementById('timetable-body');
+            tbody.innerHTML = '';
+
+            PERIODS.forEach(p => {
+                const tr = document.createElement('tr');
+
+                // Time column
+                const tdTime = document.createElement('td');
+                tdTime.className = 'time-col';
+                tdTime.innerHTML = `<span class="period-num">${p.num}</span><span class="period-time">${p.time}</span>`;
+                tr.appendChild(tdTime);
+
+                // Day columns
+                for (let d = 0; d < 6; d++) {
+                    const td = document.createElement('td');
+                    td.id = `cell-${p.num}-${d}`;
+                    td.dataset.period = p.num;
+                    td.dataset.day = d;
+                    tr.appendChild(td);
+                }
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        // ===== CORS Proxy Fetch =====
+        async function proxyFetch(url, options = {}) {
+            const proxyUrl = CORS_PROXIES[currentProxy] + encodeURIComponent(url);
+
+            // For POST requests with corsproxy.io, we need to use a different approach
+            if (options.method === 'POST') {
+                // Try with corsproxy.io POST
+                try {
+                    const resp = await fetch(proxyUrl, {
+                        method: 'POST',
+                        headers: options.headers || {},
+                        body: options.body
+                    });
+                    if (resp.ok) return resp;
+                } catch (e) {
+                    console.warn('Proxy POST failed, trying alternate:', e);
+                }
+
+                // Fallback: use allorigins with GET (encode body into URL for simple cases)
+                try {
+                    const fullUrl = url + '?' + options.body;
+                    const altProxy = CORS_PROXIES[1] + encodeURIComponent(fullUrl);
+                    const resp = await fetch(altProxy);
+                    if (resp.ok) return resp;
+                } catch (e2) {
+                    console.warn('Alternate proxy also failed:', e2);
+                }
+            }
+
+            // GET request
+            const resp = await fetch(proxyUrl);
+            return resp;
+        }
+
+        // ===== Hardcoded Department Lists =====
+        const DEPARTMENTS_DATA = {
+            // 大學部
+            'uo9uzKyL6GI=': [
+                { value: "", text: "全部" },
+                { value: "pO1+8Z6Yc0U=", text: "大學部共同整合課程" },
+                { value: "cZe/UjKEEoc=", text: "大學部共同選修(英才及水湳)" },
+                { value: "/OnCSmsHCLs=", text: "中國藥學暨中藥資源學系" },
+                { value: "x7ByTQtsNOg=", text: "中醫學系乙組" },
+                { value: "BvvH4PUtyEk=", text: "中醫學系甲組" },
+                { value: "+t4YjxfNJd4=", text: "公共衛生學系" },
+                { value: "GAGz4+k3UsE=", text: "公共衛生學院大一不分系" },
+                { value: "ffwrSOr4DGA=", text: "牙醫學系" },
+                { value: "bCZpiqDQFdo=", text: "生物科技學系" },
+                { value: "3AztL7B1sng=", text: "生物醫學工程學系" },
+                { value: "e0DSiiIdivY=", text: "生物醫學影像暨放射科學學系" },
+                { value: "LgtGSJ5VxYE=", text: "物理治療學系" },
+                { value: "ueyXg0Uyy38=", text: "通識選組(北港分部)" },
+                { value: "y4wocuwgOGU=", text: "通識選組(英才及水湳)" },
+                { value: "L3ESFKVnGRE=", text: "運動醫學系" },
+                { value: "KveO+Txau28=", text: "學士後中醫學系" },
+                { value: "bnOBb6/VWio=", text: "營養學系" },
+                { value: "TUcxGEoyWSA=", text: "職業安全與衛生學系" },
+                { value: "6qRBh07G7c0=", text: "醫務管理學系" },
+                { value: "/VHYhVdoiEE=", text: "醫學系" },
+                { value: "txNRByLqaCk=", text: "醫學檢驗生物技術學系" },
+                { value: "VyTMaukq4No=", text: "醫療資訊學系" },
+                { value: "+L2NpfPkmpE=", text: "藥用化妝品學系" },
+                { value: "AiQEwuy6b58=", text: "藥學系" },
+                { value: "3xn5RtixrsU=", text: "護理學系" },
+                { value: "5pS4QZMnfzo=", text: "體育" }
+            ],
+            // 碩士班
+            'BcDTBOd4PPY=': [
+                { value: "", text: "全部" },
+                { value: "6DPxbHq1fdw=", text: "中西醫結合研究所碩士班" },
+                { value: "9Hwbs+xV3/U=", text: "中國藥學暨中藥資源學系碩士班" },
+                { value: "LiA3utvcX1Y=", text: "中醫學系碩士班" },
+                { value: "Sesd9YOTywU=", text: "中醫學院" },
+                { value: "tOglj9x0dx8=", text: "公共衛生國際碩士學位學程" },
+                { value: "RdKUC3GORS0=", text: "公共衛生學系碩士班" },
+                { value: "6VwnInaHc0w=", text: "公共衛生學院" },
+                { value: "klMYck3l7F4=", text: "牙醫學系口腔醫學產業碩士班" },
+                { value: "AAQnYNxMB0c=", text: "牙醫學系碩士班" },
+                { value: "z5CkAilMqWM=", text: "牙醫學院" },
+                { value: "jgMgXA+5CCs=", text: "生物化學暨分子生物研究所碩士班" },
+                { value: "2deOJGlrwoo=", text: "生物科技學系碩士班" },
+                { value: "ejczcN+bjr0=", text: "生物醫學工程碩士學位學程" },
+                { value: "TLymvIZo3nE=", text: "生物醫學研究所碩士班" },
+                { value: "a3bKRsUg8bE=", text: "生物醫學影像暨放射科學學系碩士班" },
+                { value: "NyLO+324RUs=", text: "物理治療學系復健科學碩士班" },
+                { value: "T8eU3CEkWoA=", text: "科技法律碩士學位學程" },
+                { value: "pmYrfWQ+Hos=", text: "科技管理碩士學位學程" },
+                { value: "Co2vnT2tNNE=", text: "針灸研究所碩士班" },
+                { value: "1cZuhUVk3zA=", text: "健康照護學院" },
+                { value: "F+njBM8vj10=", text: "國際生物醫學碩士學位學程" },
+                { value: "2EujDlSnFAI=", text: "國際針灸碩士學位學程" },
+                { value: "Sxd73J4oIyE=", text: "細胞生物學研究所碩士班" },
+                { value: "nlFuyDTmgpg=", text: "運動醫學系碩士班" },
+                { value: "jQ7yhsIo8FA=", text: "碩博共同必選修課程(英才及水湳)" },
+                { value: "zymvGs9hZx0=", text: "製藥碩士學位學程" },
+                { value: "uF5Sl2/c75M=", text: "數位健康創新碩士學位學程" },
+                { value: "97nIHwhlRIQ=", text: "營養學系碩士班" },
+                { value: "DjCQHUBDPuA=", text: "癌症生物與藥物研發碩士學位學程" },
+                { value: "R8HyTlLM1wM=", text: "職業安全與衛生學系碩士在職專班" },
+                { value: "A50LSlEJ8co=", text: "職業安全與衛生學系碩士班" },
+                { value: "Om8WEpezdBs=", text: "轉譯醫學暨新藥開發研究所碩士班" },
+                { value: "OuuFTFe1P2k=", text: "醫務管理學系碩士在職專班" },
+                { value: "Xt2P0VJTNQM=", text: "醫務管理學系碩士班" },
+                { value: "eK14hhgEGfo=", text: "醫學工程學院" },
+                { value: "1xZoCtWTxIo=", text: "醫學院" },
+                { value: "Z/VhahhKxUY=", text: "醫學檢驗生物技術學系碩士班" },
+                { value: "LgTfmbtgIpY=", text: "藥用化妝品學系碩士班" },
+                { value: "U7Wlkw8FZjI=", text: "藥學系碩士班" },
+                { value: "egpTNuFNFZ4=", text: "藥學院" },
+                { value: "9/utqkFHn6A=", text: "護理學系跨領域長期照護碩士在職專班" },
+                { value: "Mo3pv2sVJoQ=", text: "護理學系碩士班" }
+            ],
+            // 博士班
+            'RqotLHGfmO8=': [
+                { value: "", text: "全部" },
+                { value: "Nk8gjBqHEG4=", text: "中西醫結合研究所博士班" },
+                { value: "jdB/uiFXyCM=", text: "中國藥學暨中藥資源學系博士班" },
+                { value: "00+0/v1P26o=", text: "中醫學系博士班" },
+                { value: "W4z+uBG3ISU=", text: "公共衛生學系博士班" },
+                { value: "0iou4/8/oTI=", text: "牙醫學系博士班" },
+                { value: "qkCUX2t9Mqs=", text: "生物科技產業博士學位學程" },
+                { value: "twQ6ckd73IM=", text: "生物科技學系博士班" },
+                { value: "UEp/ukIuZUo=", text: "生物醫學研究所博士班" },
+                { value: "URWGRzHwqV0=", text: "老化醫學博士學位學程" },
+                { value: "4T+6FctKG0U=", text: "校級課程" },
+                { value: "iSzaS73NfJc=", text: "針灸研究所博士班" },
+                { value: "4BF8Vl0bB3w=", text: "健康科技產業博士學位學程" },
+                { value: "jGaCIP12FJA=", text: "健康照護學院健康照護科學博士班" },
+                { value: "bOGmkImvOWg=", text: "營養學系博士班" },
+                { value: "UkGIEJyF6RA=", text: "癌症生物與藥物研發博士學位學程" },
+                { value: "1Mvg3TbZkVY=", text: "轉譯醫學暨新藥開發研究所博士班" },
+                { value: "HDvQSTk2VPI=", text: "醫學工程與復健科技產業博士學位學程" },
+                { value: "AF+un7l12T4=", text: "藥學系博士班" }
+            ],
+            // 二技部
+            'WPoDe9b0evw=': [
+                { value: "", text: "全部" }
+            ]
+        };
+
+        // ===== Load Departments =====
+        async function loadDepartments() {
+            const deptSelect = document.getElementById('select-dept');
+            const typeVal = document.getElementById('select-type').value;
+
+            deptSelect.innerHTML = '';
+
+            let depts = [];
+            // 如果選了特定學制，就從 DEPARTMENTS_DATA 取出對應系所清單；否則預設只有「全部」
+            if (typeVal && DEPARTMENTS_DATA[typeVal]) {
+                depts = DEPARTMENTS_DATA[typeVal];
+            } else {
+                // 如果沒有選學制，將各學制陣列合併，並去除重複
+                const allOptsMap = new Map();
+                allOptsMap.set("", "全部");
+                Object.values(DEPARTMENTS_DATA).forEach(arr => {
+                    arr.forEach(item => {
+                        if (item.value) allOptsMap.set(item.value, item.text);
+                    });
+                });
+                
+                allOptsMap.forEach((text, value) => {
+                    depts.push({ value, text });
+                });
+            }
+
+            depts.forEach(opt => {
+                const newOpt = document.createElement('option');
+                newOpt.value = opt.value;
+                newOpt.textContent = opt.text;
+                deptSelect.appendChild(newOpt);
+            });
+        }
+
+        // ===== Search Courses =====
+        async function searchCourses() {
+            const btn = document.getElementById('btn-search');
+            btn.classList.add('loading');
+            btn.textContent = '查詢中';
+            setStatus('正在查詢課程資料...', 'loading');
+
+            const formData = new URLSearchParams({
+                Cos_setyear_q: document.getElementById('select-year').value,
+                Cos_setterm_q: document.getElementById('select-term').value,
+                Type_no_q: document.getElementById('select-type').value,
+                Dept_no_q: document.getElementById('select-dept').value,
+                Cos_year_q: document.getElementById('select-grade').value,
+                Cos_sel_type_q: document.getElementById('select-coursetype').value,
+                Cos_id_q: '',
+                Cos_name_q: '',
+                Cos_is_eng: 'false',
+                hid_Cos_is_eng: 'false',
+                Cos_is_eng_EMI_Type: 'false',
+                hid_Cos_is_eng_EMI_Type: 'false',
+                Cos_is_eng_EAP_Type: 'false',
+                hid_Cos_is_eng_EAP_Type: 'false',
+                Cos_is_MCC: 'false',
+                hid_Cos_is_MCC: 'false',
+                Chk_indep_cos: 'false',
+                hid_Chk_indep_cos: 'false',
+                Cos_is_program: 'false',
+                hid_Cos_is_program: 'false',
+                Cos_is_Online: 'false',
+                hid_Cos_is_Online: 'false',
+                Cos_is_ch_sysc_teach: 'false',
+                hid_Cos_is_ch_sysc_teach: 'false',
+                Cos_is_IGER: 'false',
+                hid_Cos_is_IGER: 'false',
+                Cos_is_TAICA: 'false',
+                hid_Cos_is_TAICA: 'false',
+                Teacher_name_q: '',
+                Class_name_q: '',
+                Keyword_q: '',
+                GE_Requirements: '',
+                UCAN_mtype: '+twlfsHqnTc=',
+                Campus_q: '1YtQ9a6y7dg=',
+                Cos_week_S_q: '1YtQ9a6y7dg=',
+                Cos_week_E_q: '1YtQ9a6y7dg=',
+                Cos_sec_S_q: '1YtQ9a6y7dg=',
+                Cos_sec_E_q: '1YtQ9a6y7dg='
+            });
+
+            try {
+                // The API supports GET requests as well, which work much better with CORS proxies
+                const url = `${BASE_URL}/Home/Courselist?${formData.toString()}`;
+                const resp = await proxyFetch(url, {
+                    method: 'GET'
+                });
+
+                const html = await resp.text();
+                const courses = parseCourseHTML(html);
+
+                if (courses.length > 0) {
+                    courseData = courses;
+                    assignCourseColors();
+                    renderTimetable();
+                    renderCourseList();
+                    setStatus(`查詢完成`, 'success');
+                    document.getElementById('course-count').textContent = `共 ${courses.length} 門課程`;
+                } else {
+                    courseData = [];
+                    buildTimetable();
+                    document.getElementById('course-list-section').style.display = 'none';
+                    setStatus('查無課程資料，請調整篩選條件', 'error');
+                    document.getElementById('course-count').textContent = '';
+                }
+            } catch (err) {
+                console.error('Search failed:', err);
+                setStatus('查詢失敗 — 可能因跨域限制或網路問題', 'error');
+
+                // Switch to next proxy for next attempt
+                currentProxy = (currentProxy + 1) % CORS_PROXIES.length;
+            } finally {
+                btn.classList.remove('loading');
+                btn.innerHTML = '🔍 查詢課程';
+            }
+        }
+
+        // ===== Parse Course HTML =====
+        function parseCourseHTML(html) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const courses = [];
+
+            // Find the course table - look for DataTable or standard table
+            const tables = doc.querySelectorAll('table');
+            let courseTable = null;
+
+            for (const table of tables) {
+                const headers = table.querySelectorAll('th');
+                for (const th of headers) {
+                    if (th.textContent.includes('課程名稱') || th.textContent.includes('課號')) {
+                        courseTable = table;
+                        break;
+                    }
+                }
+                if (courseTable) break;
+            }
+
+            if (!courseTable) {
+                // Try parsing from RWD table format
+                const rwdTables = doc.querySelectorAll('.RWDTable, .dataTable, #example');
+                if (rwdTables.length > 0) courseTable = rwdTables[0];
+            }
+
+            if (!courseTable) {
+                console.warn('Could not find course table in response');
+                // Try to extract from any table with data
+                for (const table of tables) {
+                    const rows = table.querySelectorAll('tbody tr');
+                    if (rows.length > 2) {
+                        courseTable = table;
+                        break;
+                    }
+                }
+            }
+
+            if (!courseTable) return courses;
+
+            // Identify column indices from headers
+            const headerCells = courseTable.querySelectorAll('thead th, tr:first-child th');
+            const colMap = {};
+
+            headerCells.forEach((th, idx) => {
+                const text = th.textContent.trim();
+                if (text.includes('課號') || text.includes('課程代碼')) colMap.id = idx;
+                if (text.includes('課程名稱')) colMap.name = idx;
+                if (text.includes('學分')) colMap.credits = idx;
+                if (text.includes('修別') || text.includes('必選修')) colMap.type = idx;
+                if (text.includes('老師') || text.includes('教師') || text.includes('授課教師')) colMap.teacher = idx;
+                if (text.includes('時間') || text.includes('上課時間')) colMap.time = idx;
+                if (text.includes('教室') || text.includes('上課地點')) colMap.room = idx;
+                if (text.includes('星期')) colMap.day = idx;
+                if (text.includes('節次')) colMap.period = idx;
+            });
+
+            // Parse rows
+            const rows = courseTable.querySelectorAll('tbody tr, tr');
+            rows.forEach((row, rowIdx) => {
+                if (rowIdx === 0 && row.querySelector('th')) return; // Skip header row
+
+                const cells = row.querySelectorAll('td');
+                if (cells.length < 3) return;
+
+                const course = {
+                    id: getCell(cells, colMap.id, 0),
+                    name: getCell(cells, colMap.name, 1),
+                    credits: getCell(cells, colMap.credits, 2),
+                    type: getCell(cells, colMap.type, 3),
+                    teacher: getCell(cells, colMap.teacher, 4),
+                    time: getCell(cells, colMap.time, 5),
+                    room: getCell(cells, colMap.room, 6),
+                    schedule: []
+                };
+
+                // Parse time/schedule information
+                // Common formats: "一2,3,4" or "星期一 2-4" or "(一)2,3,4"
+                const timeStr = course.time || '';
+                course.schedule = parseSchedule(timeStr);
+
+                if (course.name && course.name.trim()) {
+                    courses.push(course);
+                }
+            });
+
+            return courses;
+        }
+
+        function getCell(cells, mappedIdx, fallbackIdx) {
+            const idx = mappedIdx !== undefined ? mappedIdx : fallbackIdx;
+            if (idx < cells.length) {
+                return cells[idx].textContent.trim();
+            }
+            return '';
+        }
+
+        // ===== Parse Schedule String =====
+        function parseSchedule(timeStr) {
+            const schedule = [];
+            if (!timeStr) return schedule;
+
+            // Try multiple patterns
+            // Pattern 1: "一2,3,4 三6,7" or "一234 三67"
+            // Pattern 2: "(一)2,3,4"
+            // Pattern 3: "星期一 2-4節"
+
+            const dayPattern = /[一二三四五六日]/g;
+            const parts = timeStr.split(/[\s\n]+/);
+
+            let currentDay = null;
+
+            for (const part of parts) {
+                const cleaned = part.replace(/[()（）星期節第\[\]]/g, '');
+
+                // Find day character
+                const dayMatch = cleaned.match(/[一二三四五六日]/);
+                if (dayMatch) {
+                    currentDay = dayMatch[0];
+                    // Extract periods after the day character
+                    const afterDay = cleaned.substring(cleaned.indexOf(currentDay) + 1);
+                    const periods = extractPeriods(afterDay);
+                    periods.forEach(p => {
+                        schedule.push({ day: currentDay, period: p });
+                    });
+                } else if (currentDay) {
+                    // Continue from last day
+                    const periods = extractPeriods(cleaned);
+                    periods.forEach(p => {
+                        schedule.push({ day: currentDay, period: p });
+                    });
+                }
+            }
+
+            return schedule;
+        }
+
+        function extractPeriods(str) {
+            const periods = [];
+            if (!str) return periods;
+
+            // Handle ranges like "2-4"
+            const rangeMatch = str.match(/(\d+)\s*[-~]\s*(\d+)/);
+            if (rangeMatch) {
+                const start = parseInt(rangeMatch[1]);
+                const end = parseInt(rangeMatch[2]);
+                for (let i = start; i <= end; i++) {
+                    periods.push(String(i));
+                }
+                return periods;
+            }
+
+            // Handle comma-separated: "2,3,4"
+            if (str.includes(',')) {
+                str.split(',').forEach(s => {
+                    const trimmed = s.trim();
+                    if (trimmed) periods.push(trimmed);
+                });
+                return periods;
+            }
+
+            // Handle concatenated: "234" or "567"
+            const nums = str.match(/\d+/g);
+            if (nums) {
+                nums.forEach(n => periods.push(n));
+            }
+
+            // Handle letter periods like A, B, C, D (night classes)
+            const letters = str.match(/[A-D]/gi);
+            if (letters) {
+                const letterMap = { 'A': '10', 'B': '11', 'C': '12', 'D': '13' };
+                letters.forEach(l => {
+                    if (letterMap[l.toUpperCase()]) {
+                        periods.push(letterMap[l.toUpperCase()]);
+                    }
+                });
+            }
+
+            return periods;
+        }
+
+        // ===== Assign Colors =====
+        function assignCourseColors() {
+            courseColorMap = {};
+            let colorIdx = 0;
+
+            courseData.forEach(course => {
+                if (!courseColorMap[course.name]) {
+                    courseColorMap[course.name] = COLORS[colorIdx % COLORS.length];
+                    colorIdx++;
+                }
+            });
+        }
+
+        // ===== Render Timetable =====
+        function renderTimetable() {
+            buildTimetable(); // Reset
+
+            courseData.forEach(course => {
+                const colorClass = courseColorMap[course.name] || 'course-color-0';
+
+                course.schedule.forEach(slot => {
+                    const dayIdx = DAY_MAP[slot.day];
+                    if (dayIdx === undefined || dayIdx >= 6) return;
+
+                    const cellId = `cell-${slot.period}-${dayIdx}`;
+                    const cell = document.getElementById(cellId);
+                    if (!cell) return;
+
+                    const div = document.createElement('div');
+                    div.className = `course-cell ${colorClass}`;
+                    div.innerHTML = `
+                        <span class="course-name">${course.name}</span>
+                        <span class="course-teacher">${course.teacher || ''}</span>
+                        <span class="course-room">${course.room || ''}</span>
+                    `;
+
+                    // Tooltip events
+                    div.addEventListener('mouseenter', (e) => showTooltip(e, course));
+                    div.addEventListener('mouseleave', hideTooltip);
+                    div.addEventListener('mousemove', moveTooltip);
+
+                    cell.appendChild(div);
+                    cell.style.height = 'auto';
+                    cell.style.minHeight = '60px';
+                });
+            });
+        }
+
+        // ===== Render Course List =====
+        function renderCourseList() {
+            const section = document.getElementById('course-list-section');
+            const tbody = document.getElementById('course-list-body');
+            tbody.innerHTML = '';
+
+            if (courseData.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+
+            section.style.display = 'block';
+
+            courseData.forEach(course => {
+                const colorClass = courseColorMap[course.name] || 'course-color-0';
+                const colorNum = colorClass.replace('course-color-', '');
+                const dotColors = [
+                    '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#f43f5e',
+                    '#06b6d4', '#6366f1', '#14b8a6', '#ec4899', '#a855f7'
+                ];
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><span class="color-dot" style="background:${dotColors[colorNum] || dotColors[0]}"></span></td>
+                    <td>${course.id}</td>
+                    <td style="font-weight:600">${course.name}</td>
+                    <td>${course.credits}</td>
+                    <td>${course.type}</td>
+                    <td>${course.teacher}</td>
+                    <td>${course.time}</td>
+                    <td>${course.room}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // ===== Tooltip =====
+        function showTooltip(e, course) {
+            const tooltip = document.getElementById('tooltip');
+            tooltip.innerHTML = `
+                <div class="tt-title">${course.name}</div>
+                <div class="tt-row"><span class="tt-label">課號</span>${course.id}</div>
+                <div class="tt-row"><span class="tt-label">學分</span>${course.credits}</div>
+                <div class="tt-row"><span class="tt-label">修別</span>${course.type}</div>
+                <div class="tt-row"><span class="tt-label">教師</span>${course.teacher || '未指定'}</div>
+                <div class="tt-row"><span class="tt-label">時間</span>${course.time || '未指定'}</div>
+                <div class="tt-row"><span class="tt-label">教室</span>${course.room || '未指定'}</div>
+            `;
+            tooltip.classList.add('visible');
+            moveTooltip(e);
+        }
+
+        function moveTooltip(e) {
+            const tooltip = document.getElementById('tooltip');
+            let x = e.clientX + 15;
+            let y = e.clientY + 15;
+
+            if (x + 320 > window.innerWidth) x = e.clientX - 330;
+            if (y + 200 > window.innerHeight) y = e.clientY - 210;
+
+            tooltip.style.left = x + 'px';
+            tooltip.style.top = y + 'px';
+        }
+
+        function hideTooltip() {
+            document.getElementById('tooltip').classList.remove('visible');
+        }
+
+        // ===== Status =====
+        function setStatus(msg, type = 'success') {
+            document.getElementById('status-msg').textContent = msg;
+            const dot = document.getElementById('status-dot');
+            dot.className = 'dot';
+            if (type === 'loading') dot.classList.add('loading');
+            if (type === 'error') dot.classList.add('error');
+        }
+
+        // ===== Reset =====
+        function resetFilters() {
+            document.getElementById('select-year').value = 'synPA3HPXq4=';
+            document.getElementById('select-term').value = 'BcDTBOd4PPY=';
+            document.getElementById('select-type').value = 'uo9uzKyL6GI=';
+            document.getElementById('select-grade').value = '';
+            document.getElementById('select-coursetype').value = '';
+
+            courseData = [];
+            buildTimetable();
+            document.getElementById('course-list-section').style.display = 'none';
+            document.getElementById('course-count').textContent = '';
+            setStatus('已重置 — 請重新選擇篩選條件', 'success');
+            loadDepartments();
+        }
+    </script>
+</body>
+</html>
