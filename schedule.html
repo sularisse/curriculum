@@ -6,9 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>中國醫藥大學 課表產生器</title>
     <meta name="description" content="中國醫藥大學課程查詢與視覺化課表產生工具">
-    <link
-        href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Inter:wght@300;400;500;600;700&display=swap"
-        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         /* ===== CSS Reset & Variables ===== */
         *,
@@ -994,6 +993,10 @@
         </div>
 
         <!-- Timetable -->
+        <div class="timetable-header animate-in animate-delay-3" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div style="font-weight: 600; color: var(--text-primary);"><span class="icon">📅</span> 預覽課表</div>
+            <button class="btn btn-secondary" id="btn-export" onclick="exportTimetable()" style="padding: 6px 12px; font-size: 13px; border-radius: var(--radius-sm);">📷 下載課表照片</button>
+        </div>
         <div class="timetable-wrapper animate-in animate-delay-3" id="timetable-wrapper">
             <table class="timetable" id="timetable">
                 <thead>
@@ -1684,11 +1687,8 @@
 
                     // Build schedule link using 114 sem1 (smtr=1141) since 115 sem1 has no data
                     let scheduleLink = '';
-                    if (course.id) {
-                        // Extract bare course ID (strip class suffix like /A)
-                        const rawId = course.id.split('/')[0].replace(/^0*/, '');
-                        const classCode = course.id.split('/')[1] || 'A';
-                        scheduleLink = `https://web1.cmu.edu.tw/courseinfo/Home/Course_outline?mCos_id=0${rawId}&mCos_Class=${classCode}&mSmtr=1141`;
+                    if (course.link) {
+                        scheduleLink = course.link.replace(/mSmtr=\d+/, 'mSmtr=1141');
                     }
 
                     const linkHtml = scheduleLink
@@ -1876,6 +1876,34 @@
             document.getElementById('course-count').textContent = '';
             setStatus('已重置篩選條件 — 已固定的課程保留在課表中', 'success');
             loadDepartments();
+        }
+
+        // ===== Export Timetable as Image =====
+        function exportTimetable() {
+            const wrapper = document.getElementById('timetable-wrapper');
+            const btn = document.getElementById('btn-export');
+            const originalText = btn.innerHTML;
+            
+            btn.innerHTML = '🔄 處理中...';
+            btn.disabled = true;
+
+            // Use html2canvas to capture the timetable
+            html2canvas(wrapper, {
+                backgroundColor: getComputedStyle(document.body).getPropertyValue('--bg-primary'),
+                scale: 2 // High resolution
+            }).then(canvas => {
+                // Create download link
+                const link = document.createElement('a');
+                link.download = `課表_${new Date().toISOString().split('T')[0]}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            }).catch(err => {
+                console.error('Error exporting image:', err);
+                alert('匯出圖片失敗，請稍後再試。');
+            }).finally(() => {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            });
         }
     </script>
 </body>
