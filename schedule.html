@@ -513,19 +513,11 @@
         }
 
         .course-cell .course-room {
-            display: none; /* Moved to cell bottom */
-        }
-
-        .cell-room-label {
             font-size: 11px; /* Emphasized room name */
             font-weight: 600;
-            color: var(--text-secondary);
-            text-align: center;
-            margin-top: 4px;
+            opacity: 0.9;
             font-family: 'Inter', sans-serif;
-            background-color: var(--bg-secondary);
-            border-radius: var(--radius-sm);
-            padding: 2px 4px;
+            margin-top: 4px;
         }
 
         /* Course Color Themes */
@@ -1709,7 +1701,6 @@
                 if (!cell) return;
 
                 const items = cellGroups[cellId];
-                const uniqueRooms = new Set();
                 
                 const hasSingleEven = items.some(i => i.weekType === '單' || i.weekType === '雙');
                 const isSplit = items.length > 1 && hasSingleEven;
@@ -1728,7 +1719,6 @@
 
                 items.forEach(item => {
                     const course = item.course;
-                    if (course.room) uniqueRooms.add(course.room);
 
                     const div = document.createElement('div');
                     div.className = `course-cell ${item.colorClass}`;
@@ -1762,6 +1752,7 @@
                             <span class="course-name">${course.name}</span>
                             ${linkHtml}
                         </div>
+                        ${course.room ? `<div class="course-room">${course.room}</div>` : ''}
                     `;
 
                     // Tooltip events
@@ -1774,19 +1765,10 @@
 
                 cell.appendChild(coursesContainer);
 
-                // Append shared room block at the bottom
-                if (uniqueRooms.size > 0) {
-                    const roomDiv = document.createElement('div');
-                    roomDiv.className = 'cell-room-label';
-                    roomDiv.innerHTML = Array.from(uniqueRooms).join(' / ');
-                    cell.appendChild(roomDiv);
-                }
-
-                cell.style.display = 'flex';
-                cell.style.flexDirection = 'column';
-                cell.style.justifyContent = 'space-between';
+                // DO NOT modify cell.style.display = 'flex' here, as it breaks table layout!
                 cell.style.height = 'auto';
                 cell.style.minHeight = '60px';
+                cell.style.verticalAlign = 'top';
             });
         }
 
