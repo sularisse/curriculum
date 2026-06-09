@@ -1084,6 +1084,8 @@
 
         let courseData = [];
         let courseColorMap = {};
+        // Map of pinned courses (persists across searches): key = course.id+course.name, value = course
+        let pinnedCourses = new Map();
 
         // ===== Initialize =====
         document.addEventListener('DOMContentLoaded', () => {
@@ -1357,6 +1359,15 @@
 
                 if (courses.length > 0) {
                     courseData = courses;
+                    // Mark already-pinned courses as selected
+                    courseData.forEach(c => {
+                        const key = c.id + '|' + c.name;
+                        if (pinnedCourses.has(key)) {
+                            c.selected = true;
+                            // update stored reference to get fresh data
+                            pinnedCourses.set(key, c);
+                        }
+                    });
                     assignCourseColors();
                     renderTimetable();
                     renderCourseList();
@@ -1364,8 +1375,12 @@
                     document.getElementById('course-count').textContent = `共 ${courses.length} 門課程`;
                 } else {
                     courseData = [];
-                    buildTimetable();
-                    document.getElementById('course-list-section').style.display = 'none';
+                    // still re-render timetable to show pinned courses from previous searches
+                    renderTimetable();
+                    renderCourseList();
+                    if (pinnedCourses.size === 0) {
+                        document.getElementById('course-list-section').style.display = 'none';
+                    }
                     setStatus('查無課程資料，請調整篩選條件', 'error');
                     document.getElementById('course-count').textContent = '';
                 }
@@ -1608,35 +1623,39 @@
                 return periods;
             }
 
-            // Handle concatenated digits: "1234" -> ['1','2','3','4']
-            // But also handle two-digit periods like "10", "11", "12", "13"
-            // Strategy: greedily parse from left, trying 2-digit first
-            let i = 0;
-            while (i < cleaned.length) {
-                if (i + 1 < cleaned.length) {
-                    const twoDigit = parseInt(cleaned.substring(i, i + 2));
-                    if (twoDigit >= 10 && twoDigit <= 13) {
-                        periods.push(String(twoDigit));
-                        i += 2;
-                        continue;
-                    }
-                }
+            // Handle concatenated single digits: "12" = periods 1+2, "1234" = 1+2+3+4
+            // Special: '0' can only follow '1' to make period 10 (e.g., "10" → period 10)
+            for (let i = 0; i < cleaned.length; i++) {
                 const ch = cleaned[i];
-                if (/\d/.test(ch)) {
+                if (ch === '0') {
+                    // '0' means the preceding period '1' should become '10'
+                    if (periods.length > 0 && periods[periods.length - 1] === '1') {
+                        periods[periods.length - 1] = '10';
+                    }
+                    // else ignore stray 0
+                } else if (/\d/.test(ch)) {
                     periods.push(ch);
                 }
-                i++;
             }
 
-            return periods;
+            // Deduplicate while preserving order
+            return [...new Set(periods)];
         }
 
         // ===== Assign Colors =====
         function assignCourseColors() {
-            courseColorMap = {};
-            let colorIdx = 0;
+            let colorIdx = Object.keys(courseColorMap).length;
 
+            // Assign colors to search results not yet in colorMap
             courseData.forEach(course => {
+                if (!courseColorMap[course.name]) {
+                    courseColorMap[course.name] = COLORS[colorIdx % COLORS.length];
+                    colorIdx++;
+                }
+            });
+
+            // Also assign colors to pinned courses (in case they came from a different search)
+            pinnedCourses.forEach(course => {
                 if (!courseColorMap[course.name]) {
                     courseColorMap[course.name] = COLORS[colorIdx % COLORS.length];
                     colorIdx++;
@@ -1648,9 +1667,8 @@
         function renderTimetable() {
             buildTimetable(); // Reset
 
-            courseData.forEach(course => {
-                if (!course.selected) return;
-
+            // Only render pinned courses
+            pinnedCourses.forEach(course => {
                 const colorClass = courseColorMap[course.name] || 'course-color-0';
 
                 course.schedule.forEach(slot => {
@@ -1663,11 +1681,19 @@
 
                     const div = document.createElement('div');
                     div.className = `course-cell ${colorClass}`;
-                    // Add link button
-                    let linkHtml = '';
-                    if (course.link) {
-                        linkHtml = `<a href="${course.link}" target="_blank" class="course-link-btn" title="查看課程大綱">大綱</a>`;
+
+                    // Build schedule link using 114 sem1 (smtr=1141) since 115 sem1 has no data
+                    let scheduleLink = '';
+                    if (course.id) {
+                        // Extract bare course ID (strip class suffix like /A)
+                        const rawId = course.id.split('/')[0].replace(/^0*/, '');
+                        const classCode = course.id.split('/')[1] || 'A';
+                        scheduleLink = `https://web1.cmu.edu.tw/courseinfo/Home/Course_outline?mCos_id=0${rawId}&mCos_Class=${classCode}&mSmtr=1141`;
                     }
+
+                    const linkHtml = scheduleLink
+                        ? `<a href="${scheduleLink}" target="_blank" class="course-link-btn" title="查看114學年第一學期時程規劃">時程</a>`
+                        : '';
 
                     div.innerHTML = `
                         <div class="course-header">
@@ -1698,33 +1724,38 @@
             const tbody = document.getElementById('course-list-body');
             tbody.innerHTML = '';
 
-            if (courseData.length === 0) {
+            const dotColors = [
+                '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#f43f5e',
+                '#06b6d4', '#6366f1', '#14b8a6', '#ec4899', '#a855f7'
+            ];
+
+            const hasPinned = pinnedCourses.size > 0;
+            const hasResults = courseData.length > 0;
+
+            if (!hasPinned && !hasResults) {
                 section.style.display = 'none';
                 return;
             }
 
             section.style.display = 'block';
 
-            courseData.forEach(course => {
+            // Helper: render one row
+            function makeRow(course, isPinned) {
+                const key = course.id + '|' + course.name;
                 const colorClass = courseColorMap[course.name] || 'course-color-0';
-                const colorNum = colorClass.replace('course-color-', '');
-                const dotColors = [
-                    '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#f43f5e',
-                    '#06b6d4', '#6366f1', '#14b8a6', '#ec4899', '#a855f7'
-                ];
+                const colorNum = parseInt(colorClass.replace('course-color-', ''));
+                const dotColor = dotColors[colorNum] || dotColors[0];
 
                 const tr = document.createElement('tr');
-
-                // Add course index for toggling
-                const courseIdx = courseData.indexOf(course);
+                if (isPinned) tr.style.background = 'rgba(59,130,246,0.08)';
 
                 tr.innerHTML = `
                     <td class="course-checkbox-wrapper">
-                        <input type="checkbox" class="course-checkbox" 
-                            ${course.selected ? 'checked' : ''} 
-                            onchange="toggleCourse(${courseIdx}, this.checked)">
+                        <input type="checkbox" class="course-checkbox"
+                            ${isPinned ? 'checked' : ''}
+                            data-key="${key}">
                     </td>
-                    <td><span class="color-dot" style="background:${dotColors[colorNum] || dotColors[0]}"></span></td>
+                    <td><span class="color-dot" style="background:${dotColor}"></span></td>
                     <td>${course.id}</td>
                     <td style="font-weight:600">${course.name}</td>
                     <td>${course.credits}</td>
@@ -1734,28 +1765,58 @@
                     <td>${course.room}</td>
                 `;
 
-                // Optional: make row clicking toggle the checkbox
+                const cb = tr.querySelector('.course-checkbox');
+                cb.addEventListener('change', () => toggleCourse(key, cb.checked, course));
+
                 tr.style.cursor = 'pointer';
-                tr.addEventListener('click', (e) => {
+                tr.addEventListener('click', e => {
                     if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'A') {
-                        const cb = tr.querySelector('.course-checkbox');
-                        if (cb) {
-                            cb.checked = !cb.checked;
-                            toggleCourse(courseIdx, cb.checked);
-                        }
+                        cb.checked = !cb.checked;
+                        toggleCourse(key, cb.checked, course);
                     }
                 });
 
-                tbody.appendChild(tr);
-            });
+                return tr;
+            }
+
+            // 1. Pinned courses section (always shown, highlighted)
+            if (hasPinned) {
+                const pinnedHeader = document.createElement('tr');
+                pinnedHeader.innerHTML = `<td colspan="9" style="padding:6px 12px;font-size:11px;font-weight:700;color:var(--accent-blue);letter-spacing:0.5px;text-transform:uppercase;">📌 已固定課程</td>`;
+                tbody.appendChild(pinnedHeader);
+
+                pinnedCourses.forEach(course => {
+                    tbody.appendChild(makeRow(course, true));
+                });
+            }
+
+            // 2. Search results (excluding already-pinned)
+            if (hasResults) {
+                const searchHeader = document.createElement('tr');
+                searchHeader.innerHTML = `<td colspan="9" style="padding:6px 12px;font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:0.5px;text-transform:uppercase;">🔍 查詢結果</td>`;
+                tbody.appendChild(searchHeader);
+
+                courseData.forEach(course => {
+                    const key = course.id + '|' + course.name;
+                    if (!pinnedCourses.has(key)) {
+                        tbody.appendChild(makeRow(course, false));
+                    }
+                });
+            }
         }
 
-        // ===== Toggle Course =====
-        function toggleCourse(idx, isChecked) {
-            if (courseData[idx]) {
-                courseData[idx].selected = isChecked;
-                renderTimetable();
+        // ===== Toggle Course (pin/unpin) =====
+        function toggleCourse(key, isChecked, course) {
+            if (isChecked) {
+                pinnedCourses.set(key, course);
+                course.selected = true;
+            } else {
+                pinnedCourses.delete(key);
+                course.selected = false;
             }
+            assignCourseColors();
+            renderTimetable();
+            renderCourseList();
         }
 
         // ===== Tooltip =====
@@ -1808,10 +1869,12 @@
             document.getElementById('select-coursetype').value = '';
 
             courseData = [];
-            buildTimetable();
-            document.getElementById('course-list-section').style.display = 'none';
+            // Note: pinnedCourses and timetable are NOT cleared on filter reset
+            // To clear pinned courses, refresh the page
+            renderTimetable();
+            renderCourseList();
             document.getElementById('course-count').textContent = '';
-            setStatus('已重置 — 請重新選擇篩選條件', 'success');
+            setStatus('已重置篩選條件 — 已固定的課程保留在課表中', 'success');
             loadDepartments();
         }
     </script>
