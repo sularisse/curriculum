@@ -1387,93 +1387,183 @@
             const doc = parser.parseFromString(html, 'text/html');
             const courses = [];
 
-            // Find the course table - look for DataTable or standard table
-            const tables = doc.querySelectorAll('table');
+            // Find the course table (contains ClassTable columns)
             let courseTable = null;
 
+            // Look for table containing ClassTable cells
+            const tables = doc.querySelectorAll('table');
             for (const table of tables) {
-                const headers = table.querySelectorAll('th');
-                for (const th of headers) {
-                    if (th.textContent.includes('課程名稱') || th.textContent.includes('課號')) {
-                        courseTable = table;
-                        break;
-                    }
+                if (table.querySelector('.ClassTable')) {
+                    courseTable = table;
+                    break;
                 }
-                if (courseTable) break;
             }
 
+            // Fallback: find table with 課程名稱 in header
             if (!courseTable) {
-                // Try parsing from RWD table format
-                const rwdTables = doc.querySelectorAll('.RWDTable, .dataTable, #example');
-                if (rwdTables.length > 0) courseTable = rwdTables[0];
-            }
-
-            if (!courseTable) {
-                console.warn('Could not find course table in response');
-                // Try to extract from any table with data
                 for (const table of tables) {
-                    const rows = table.querySelectorAll('tbody tr');
-                    if (rows.length > 2) {
-                        courseTable = table;
-                        break;
+                    const headers = table.querySelectorAll('th');
+                    for (const th of headers) {
+                        if (th.textContent.includes('課程名稱') || th.textContent.includes('課號')) {
+                            courseTable = table;
+                            break;
+                        }
                     }
+                    if (courseTable) break;
                 }
             }
 
             if (!courseTable) return courses;
 
-            // Identify column indices from headers
+            // ---- Identify column indices from header row ----
+            // The real table header order:
+            // 0: 系所年級, 1: 課號/班別, 2: 課程名稱, 3: 修別, 4: 課別, 5: 學分,
+            // 6: 已選人數/最大人數, 7: 授課教師, 8: 授課地點,
+            // 9: 星期日(ClassTable IsBreath), 10: 星期一, 11: 星期二, 12: 星期三,
+            // 13: 星期四, 14: 星期五, 15: 星期六(ClassTable IsBreath), 16: 備註
+
             const headerCells = courseTable.querySelectorAll('thead th, tr:first-child th');
-            const colMap = {};
+            const colMap = {
+                id: null, name: null, type: null, credits: null,
+                teacher: null, room: null
+            };
+            // Day column index array: [日, 一, 二, 三, 四, 五, 六]
+            const dayColIndices = [];
+            let classTableCount = 0;
 
             headerCells.forEach((th, idx) => {
                 const text = th.textContent.trim();
-                if (text.includes('課號') || text.includes('課程代碼')) colMap.id = idx;
+                if (text.includes('課號') || text.includes('課號/班別')) colMap.id = idx;
                 if (text.includes('課程名稱')) colMap.name = idx;
                 if (text.includes('學分')) colMap.credits = idx;
                 if (text.includes('修別') || text.includes('必選修')) colMap.type = idx;
-                if (text.includes('老師') || text.includes('教師') || text.includes('授課教師')) colMap.teacher = idx;
-                if (text.includes('時間') || text.includes('上課時間')) colMap.time = idx;
-                if (text.includes('教室') || text.includes('上課地點')) colMap.room = idx;
-                if (text.includes('星期')) colMap.day = idx;
-                if (text.includes('節次')) colMap.period = idx;
+                if (text.includes('授課教師') || text.includes('老師') || text.includes('教師')) colMap.teacher = idx;
+                if (text.includes('授課地點') || text.includes('教室') || text.includes('上課地點')) colMap.room = idx;
+                // Detect the 7 day columns by their header text
+                if (text === '星期日' || (text.includes('星期') && text.endsWith('日'))) dayColIndices[0] = idx;
+                if (text === '星期一' || (text.includes('星期') && text.endsWith('一'))) dayColIndices[1] = idx;
+                if (text === '星期二' || (text.includes('星期') && text.endsWith('二'))) dayColIndices[2] = idx;
+                if (text === '星期三' || (text.includes('星期') && text.endsWith('三'))) dayColIndices[3] = idx;
+                if (text === '星期四' || (text.includes('星期') && text.endsWith('四'))) dayColIndices[4] = idx;
+                if (text === '星期五' || (text.includes('星期') && text.endsWith('五'))) dayColIndices[5] = idx;
+                if (text === '星期六' || (text.includes('星期') && text.endsWith('六'))) dayColIndices[6] = idx;
             });
 
-            // Parse rows
-            const rows = courseTable.querySelectorAll('tbody tr, tr');
-            rows.forEach((row, rowIdx) => {
-                if (rowIdx === 0 && row.querySelector('th')) return; // Skip header row
+            // If header detection failed (no 星期 found), try auto-detect from ClassTable cells
+            const DAY_NAMES_IDX = ['日', '一', '二', '三', '四', '五', '六'];
 
+            // ---- Parse data rows ----
+            const rows = courseTable.querySelectorAll('tbody tr');
+            rows.forEach(row => {
                 const cells = row.querySelectorAll('td');
                 if (cells.length < 3) return;
 
-                const course = {
-                    id: getCell(cells, colMap.id, 0),
-                    name: getCell(cells, colMap.name, 1),
-                    credits: getCell(cells, colMap.credits, 2),
-                    type: getCell(cells, colMap.type, 3),
-                    teacher: getCell(cells, colMap.teacher, 4),
-                    time: getCell(cells, colMap.time, 5),
-                    room: getCell(cells, colMap.room, 6),
-                    schedule: [],
-                    link: '',
-                    selected: false
-                };
+                // Extract basic info
+                const idRaw   = getCell(cells, colMap.id, 1);
+                const nameRaw = colMap.name !== null ? cells[colMap.name] : cells[2];
 
-                // Extract link from name cell if available
-                const nameCellIdx = colMap.name !== undefined ? colMap.name : 1;
-                if (nameCellIdx < cells.length) {
-                    const aTag = cells[nameCellIdx].querySelector('a');
+                // Link
+                let link = '';
+                if (nameRaw) {
+                    const aTag = nameRaw.querySelector('a');
                     if (aTag) {
                         const href = aTag.getAttribute('href');
-                        if (href) course.link = BASE_URL.replace('/courseinfo', '') + href;
+                        if (href) link = 'https://web1.cmu.edu.tw' + href;
                     }
                 }
 
-                // Parse time/schedule information
-                // Common formats: "一2,3,4" or "星期一 2-4" or "(一)2,3,4"
-                const timeStr = course.time || '';
-                course.schedule = parseSchedule(timeStr);
+                const course = {
+                    id:      idRaw,
+                    name:    nameRaw ? nameRaw.textContent.trim() : '',
+                    credits: getCell(cells, colMap.credits, 5),
+                    type:    getCell(cells, colMap.type, 3),
+                    teacher: '',
+                    room:    '',
+                    time:    '',
+                    schedule: [],
+                    link:    link,
+                    selected: false
+                };
+
+                // Teacher: take only first name (first line)
+                if (colMap.teacher !== null && colMap.teacher < cells.length) {
+                    const teacherEl = cells[colMap.teacher];
+                    // Get all text nodes / <a> texts
+                    const teacherLinks = teacherEl.querySelectorAll('a');
+                    if (teacherLinks.length > 0) {
+                        course.teacher = Array.from(teacherLinks).map(a => a.textContent.trim()).join('、');
+                    } else {
+                        course.teacher = teacherEl.textContent.trim().split('\n')[0].trim();
+                    }
+                }
+
+                // Room: first line only
+                if (colMap.room !== null && colMap.room < cells.length) {
+                    const roomText = cells[colMap.room].textContent.trim();
+                    course.room = roomText.split('\n')[0].replace(/\s+/g, ' ').trim();
+                }
+
+                // ---- Parse schedule from day columns ----
+                // Strategy: find all .ClassTable cells, map to day index
+                // Table header order: 日, 一, 二, 三, 四, 五, 六 (indices 9-15 typically)
+                const classTableCells = row.querySelectorAll('.ClassTable');
+                // There should be 7 ClassTable cells (日~六)
+                if (classTableCells.length >= 7) {
+                    // Index 0 = 日, 1 = 一, 2 = 二, ..., 6 = 六
+                    const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+                    classTableCells.forEach((cell, di) => {
+                        const dayName = dayNames[di];
+                        if (!dayName || dayName === '日') return; // skip Sunday
+                        const rawText = cell.innerHTML
+                            .replace(/<br\s*\/?>/gi, '|') // replace <br> with pipe
+                            .replace(/<[^>]*>/g, '')      // strip other tags
+                            .trim();
+                        if (!rawText || rawText === '|') return;
+
+                        // Split by | to handle multiple teachers rows
+                        // Take UNIQUE period strings (avoid duplicates from multi-teacher)
+                        const periodLines = [...new Set(rawText.split('|').map(s => s.trim()).filter(Boolean))];
+
+                        periodLines.forEach(line => {
+                            if (!line) return;
+                            const periods = extractPeriodsFromCell(line);
+                            periods.forEach(p => {
+                                course.schedule.push({ day: dayName, period: p });
+                            });
+                        });
+                    });
+                } else if (dayColIndices.some(i => i !== undefined)) {
+                    // Fallback using detected header column indices
+                    const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+                    dayColIndices.forEach((colIdx, di) => {
+                        if (colIdx === undefined || !dayNames[di] || dayNames[di] === '日') return;
+                        if (colIdx >= cells.length) return;
+                        const rawText = cells[colIdx].innerHTML
+                            .replace(/<br\s*\/?>/gi, '|')
+                            .replace(/<[^>]*>/g, '')
+                            .trim();
+                        if (!rawText || rawText === '|') return;
+                        const periodLines = [...new Set(rawText.split('|').map(s => s.trim()).filter(Boolean))];
+                        periodLines.forEach(line => {
+                            const periods = extractPeriodsFromCell(line);
+                            periods.forEach(p => {
+                                course.schedule.push({ day: dayNames[di], period: p });
+                            });
+                        });
+                    });
+                }
+
+                // Build readable time string
+                if (course.schedule.length > 0) {
+                    const dayGroups = {};
+                    course.schedule.forEach(s => {
+                        if (!dayGroups[s.day]) dayGroups[s.day] = [];
+                        if (!dayGroups[s.day].includes(s.period)) dayGroups[s.day].push(s.period);
+                    });
+                    course.time = Object.entries(dayGroups)
+                        .map(([day, periods]) => `${day}(${periods.join(',')})`)
+                        .join(' ');
+                }
 
                 if (course.name && course.name.trim()) {
                     courses.push(course);
@@ -1484,92 +1574,58 @@
         }
 
         function getCell(cells, mappedIdx, fallbackIdx) {
-            const idx = mappedIdx !== undefined ? mappedIdx : fallbackIdx;
+            const idx = mappedIdx !== null && mappedIdx !== undefined ? mappedIdx : fallbackIdx;
             if (idx < cells.length) {
                 return cells[idx].textContent.trim();
             }
             return '';
         }
 
-        // ===== Parse Schedule String =====
-        function parseSchedule(timeStr) {
-            const schedule = [];
-            if (!timeStr) return schedule;
-
-            // Try multiple patterns
-            // Pattern 1: "一2,3,4 三6,7" or "一234 三67"
-            // Pattern 2: "(一)2,3,4"
-            // Pattern 3: "星期一 2-4節"
-
-            const dayPattern = /[一二三四五六日]/g;
-            const parts = timeStr.split(/[\s\n]+/);
-
-            let currentDay = null;
-
-            for (const part of parts) {
-                const cleaned = part.replace(/[()（）星期節第\[\]]/g, '');
-
-                // Find day character
-                const dayMatch = cleaned.match(/[一二三四五六日]/);
-                if (dayMatch) {
-                    currentDay = dayMatch[0];
-                    // Extract periods after the day character
-                    const afterDay = cleaned.substring(cleaned.indexOf(currentDay) + 1);
-                    const periods = extractPeriods(afterDay);
-                    periods.forEach(p => {
-                        schedule.push({ day: currentDay, period: p });
-                    });
-                } else if (currentDay) {
-                    // Continue from last day
-                    const periods = extractPeriods(cleaned);
-                    periods.forEach(p => {
-                        schedule.push({ day: currentDay, period: p });
-                    });
-                }
-            }
-
-            return schedule;
-        }
-
-        function extractPeriods(str) {
+        // Parse period string from a single ClassTable cell text
+        // Formats seen: "12", "1234", "34", "雙(34)", "單(1234)"
+        function extractPeriodsFromCell(str) {
             const periods = [];
             if (!str) return periods;
 
-            // Handle ranges like "2-4"
-            const rangeMatch = str.match(/(\d+)\s*[-~]\s*(\d+)/);
+            // Remove 單/雙/每 prefix and parentheses (we just show the periods, not odd/even week)
+            const cleaned = str.replace(/[單雙每()（）]/g, '').trim();
+
+            // Handle ranges like "1-4"
+            const rangeMatch = cleaned.match(/^(\d+)[-~](\d+)$/);
             if (rangeMatch) {
-                const start = parseInt(rangeMatch[1]);
-                const end = parseInt(rangeMatch[2]);
-                for (let i = start; i <= end; i++) {
+                for (let i = parseInt(rangeMatch[1]); i <= parseInt(rangeMatch[2]); i++) {
                     periods.push(String(i));
                 }
                 return periods;
             }
 
-            // Handle comma-separated: "2,3,4"
-            if (str.includes(',')) {
-                str.split(',').forEach(s => {
-                    const trimmed = s.trim();
-                    if (trimmed) periods.push(trimmed);
+            // Handle comma-separated: "1,2,3"
+            if (cleaned.includes(',')) {
+                cleaned.split(',').forEach(s => {
+                    const t = s.trim();
+                    if (t) periods.push(t);
                 });
                 return periods;
             }
 
-            // Handle concatenated: "234" or "567"
-            const nums = str.match(/\d+/g);
-            if (nums) {
-                nums.forEach(n => periods.push(n));
-            }
-
-            // Handle letter periods like A, B, C, D (night classes)
-            const letters = str.match(/[A-D]/gi);
-            if (letters) {
-                const letterMap = { 'A': '10', 'B': '11', 'C': '12', 'D': '13' };
-                letters.forEach(l => {
-                    if (letterMap[l.toUpperCase()]) {
-                        periods.push(letterMap[l.toUpperCase()]);
+            // Handle concatenated digits: "1234" -> ['1','2','3','4']
+            // But also handle two-digit periods like "10", "11", "12", "13"
+            // Strategy: greedily parse from left, trying 2-digit first
+            let i = 0;
+            while (i < cleaned.length) {
+                if (i + 1 < cleaned.length) {
+                    const twoDigit = parseInt(cleaned.substring(i, i + 2));
+                    if (twoDigit >= 10 && twoDigit <= 13) {
+                        periods.push(String(twoDigit));
+                        i += 2;
+                        continue;
                     }
-                });
+                }
+                const ch = cleaned[i];
+                if (/\d/.test(ch)) {
+                    periods.push(ch);
+                }
+                i++;
             }
 
             return periods;
