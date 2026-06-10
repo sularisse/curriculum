@@ -1051,12 +1051,15 @@
     <script>
         // ===== Constants =====
         const CORS_PROXIES = [
-            'https://api.codetabs.com/v1/proxy/?quest=',
-            'https://corsproxy.io/?url=',
-            'https://api.allorigins.win/raw?url='
+            { prefix: 'https://api.allorigins.win/get?url=', encode: true, type: 'json' },
+            { prefix: 'https://api.allorigins.win/raw?url=', encode: true, type: 'raw' },
+            { prefix: 'https://corsproxy.io/?url=', encode: true, type: 'raw' },
+            { prefix: 'https://cors.eu.org/', encode: false, type: 'raw' },
+            { prefix: 'https://proxy.corsfix.com/?', encode: true, type: 'raw' }
         ];
         let currentProxy = 0;
-        const BASE_URL = 'https://web1.cmu.edu.tw/courseinfo';
+        const CMU_ORIGIN = 'http://web1.cmu.edu.tw';
+        const BASE_URL = CMU_ORIGIN + '/courseinfo';
 
         // Period times (英才/水湳校區)
         const PERIODS = [
@@ -1130,37 +1133,64 @@
         }
 
         // ===== CORS Proxy Fetch =====
-        async function proxyFetch(url, options = {}) {
-            const proxyUrl = CORS_PROXIES[currentProxy] + encodeURIComponent(url);
+        function isValidCourseHTML(html) {
+            return typeof html === 'string' && html.length > 500 &&
+                (html.includes('ClassTable') || html.includes('課程名稱') || html.includes('dataTable'));
+        }
 
-            // For POST requests with corsproxy.io, we need to use a different approach
-            if (options.method === 'POST') {
-                // Try with corsproxy.io POST
-                try {
-                    const resp = await fetch(proxyUrl, {
-                        method: 'POST',
-                        headers: options.headers || {},
-                        body: options.body
-                    });
-                    if (resp.ok) return resp;
-                } catch (e) {
-                    console.warn('Proxy POST failed, trying alternate:', e);
-                }
+        function fetchWithTimeout(url, options = {}, timeoutMs = 35000) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            return fetch(url, { ...options, signal: controller.signal })
+                .finally(() => clearTimeout(timer));
+        }
 
-                // Fallback: use allorigins with GET (encode body into URL for simple cases)
-                try {
-                    const fullUrl = url + '?' + options.body;
-                    const altProxy = CORS_PROXIES[1] + encodeURIComponent(fullUrl);
-                    const resp = await fetch(altProxy);
-                    if (resp.ok) return resp;
-                } catch (e2) {
-                    console.warn('Alternate proxy also failed:', e2);
+        function buildProxyUrl(proxy, targetUrl) {
+            return proxy.encode ? proxy.prefix + encodeURIComponent(targetUrl) : proxy.prefix + targetUrl;
+        }
+
+        async function readProxyResponse(resp, proxy) {
+            if (!resp.ok) return null;
+            if (proxy.type === 'json') {
+                const data = await resp.json();
+                return data && data.contents ? data.contents : null;
+            }
+            return resp.text();
+        }
+
+        async function proxyFetch(url) {
+            const urlsToTry = [url];
+            if (url.startsWith('https://')) {
+                urlsToTry.push(url.replace('https://', 'http://'));
+            } else if (url.startsWith('http://')) {
+                urlsToTry.push(url.replace('http://', 'https://'));
+            }
+
+            let lastError = null;
+
+            for (let offset = 0; offset < CORS_PROXIES.length; offset++) {
+                const proxy = CORS_PROXIES[(currentProxy + offset) % CORS_PROXIES.length];
+
+                for (const targetUrl of urlsToTry) {
+                    const proxyUrl = buildProxyUrl(proxy, targetUrl);
+                    try {
+                        const resp = await fetchWithTimeout(proxyUrl);
+                        const html = await readProxyResponse(resp, proxy);
+                        if (isValidCourseHTML(html)) {
+                            currentProxy = (currentProxy + offset) % CORS_PROXIES.length;
+                            return {
+                                ok: true,
+                                text: async () => html
+                            };
+                        }
+                    } catch (err) {
+                        lastError = err;
+                        console.warn(`Proxy ${proxy.prefix} failed:`, err);
+                    }
                 }
             }
 
-            // GET request
-            const resp = await fetch(proxyUrl);
-            return resp;
+            throw lastError || new Error('All CORS proxies failed');
         }
 
         // ===== Hardcoded Department Lists =====
@@ -1354,10 +1384,7 @@
             try {
                 // The API supports GET requests as well, which work much better with CORS proxies
                 const url = `${BASE_URL}/Home/Courselist?${formData.toString()}`;
-                const resp = await proxyFetch(url, {
-                    method: 'GET'
-                });
-
+                const resp = await proxyFetch(url);
                 const html = await resp.text();
                 const courses = parseCourseHTML(html);
 
@@ -1390,9 +1417,7 @@
                 }
             } catch (err) {
                 console.error('Search failed:', err);
-                setStatus('查詢失敗 — 可能因跨域限制或網路問題', 'error');
-
-                // Switch to next proxy for next attempt
+                setStatus('查詢失敗 — 請確認網路連線，或改用 localhost 開啟此頁面後再試', 'error');
                 currentProxy = (currentProxy + 1) % CORS_PROXIES.length;
             } finally {
                 btn.classList.remove('loading');
@@ -1487,7 +1512,7 @@
                     const aTag = nameRaw.querySelector('a');
                     if (aTag) {
                         const href = aTag.getAttribute('href');
-                        if (href) link = 'https://web1.cmu.edu.tw' + href;
+                        if (href) link = CMU_ORIGIN + href;
                     }
                 }
 
